@@ -1,0 +1,29 @@
+{
+  "name": "code-query",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "index.mjs",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "ksenkso",
+  "license": "ISC",
+  "dependencies": {
+    "@babel/generator": "^7.22.5",
+    "@babel/parser": "^7.21.4",
+    "@babel/traverse": "^7.21.4",
+    "@babel/types": "^7.21.4",
+    "eslint": "^8.42.0",
+    "eslint-traverse": "^1.0.0",
+    "esprima": "^4.0.1",
+    "esquery": "^1.5.0",
+    "glob": "^10.2.2",
+    "iter-tools": "^7.5.3",
+    "vue-eslint-parser": "^9.3.0"
+  },
+  "engines": {
+    "npm": ">=8.0.0 ",
+    "node": ">=16.15.0"
+  }
+}
