@@ -1,6 +1,6 @@
-import { findAsyncDataAndIsLoading } from './tasks.mjs';
+import { findAllEventsWithoutEmits } from './tasks.mjs';
 
 // TODO: сделать выполнение команд из консоли
-findAsyncDataAndIsLoading();
+findAllEventsWithoutEmits();
 
 

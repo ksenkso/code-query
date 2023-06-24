@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import { Glob } from 'glob';
 import path from 'path';
-import { getJsFromVue } from './selection.mjs';
+import { getComponentScript } from './selection.mjs';
 
 export function noop() {}
 export const readFilesList = async function * (list) {
@@ -48,17 +48,37 @@ export const allVueFiles = async function * () {
 
 export const allJsFromVueFiles = async function * () {
   for await (const file of allVueFiles()) {
-    const jsSource = getJsFromVue(file.content);
+    const jsSource = getComponentScript(file);
+
     if (jsSource) {
-      yield { file, source: jsSource };
+      file.jsSource = jsSource;
+      yield file;
     }
   }
 }
 
-export const attrKey = (attr) => {
-  return typeof attr.key.name === 'string'
-    ? attr.key.name
-    : attr.key.argument.name;
+export const iterateFiles = async (files, visitor) => {
+  for await (const file of files) {
+    await withErrorHandling(file, async () => {
+      await visitor(file);
+    })
+  }
+}
+
+export const attrKey = (attr, source) => {
+  if (attr.key.type === 'VDirectiveKey') {
+    return attr.key.argument
+      ? attr.key.argument.name || source.substring(...attr.key.argument.range)
+      : attr.key.name.name;
+  }
+
+  return attr.key.name;
+}
+
+export const attrValue = (attr, source) => {
+  return attr.value.type === 'VExpressionContainer'
+    ? source.substring(...attr.range)
+    : attr.value.value
 }
 
 export const isEventAttr = (attr) => {
@@ -75,4 +95,26 @@ export const isNativeEvent = (attr) => {
 
 export const logSet = set => {
   console.log(Array.from(set).join('\n'));
+}
+
+export const normalizeComponentName = name => name.toLowerCase().replaceAll('-', '');
+
+export const uniqueLogger = () => {
+  const set = new Set();
+
+  return (value) => {
+    if (!set.has(value)) {
+      console.log(value);
+      set.add(value);
+    }
+  }
+}
+
+export const withErrorHandling = async (file, fn) => {
+  try {
+    await fn();
+  } catch (err) {
+    console.log(`Error in file: ${file.name}`);
+    throw err;
+  }
 }

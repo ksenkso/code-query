@@ -3,20 +3,31 @@ import t from '@babel/types';
 import g from '@babel/generator';
 import {
   allJsFromVueFiles,
+  allVueFiles,
+  attrKey,
+  attrValue,
   files,
   isEventAttr,
   isEventName,
   isNativeEvent,
-  logSet
+  iterateFiles,
+  logSet,
+  normalizeComponentName,
+  uniqueLogger
 } from './utils.mjs';
 import {
+  enterComponentDefinition,
   getComponentOption,
   getLastExpression,
   isPropertyName,
+  matchAny,
+  matchComponentWithProp,
+  parseVueFile,
+  resolveComponentStruct,
   subtraverse,
   traverse
 } from './selection.mjs';
-import { toCamelCase } from './transform.mjs';
+import { replaceContent, toCamelCase } from './transform.mjs';
 
 export const findStyleAndClassBindings = async () => {
   const componentName = 'TMPostForm'.toLowerCase();
@@ -144,8 +155,8 @@ export const findAsyncDataWithThisExpression = async () => {
   const containsThis = new Set();
   const tasks = [];
 
-  for await (const { file: { name }, source } of allJsFromVueFiles()) {
-    traverse(source, {
+  for await (const { name, jsSource } of allJsFromVueFiles()) {
+    traverse(jsSource, {
       ExportDefaultDeclaration(path) {
         const { node } = path;
         const setupNode = node.declaration.properties.find(prop => prop.key.name === 'setup');
@@ -175,8 +186,8 @@ export const findAsyncDataWithThisExpression = async () => {
 export const findAsyncDataAndIsLoading = async () => {
   const duplicateDeclarations = new Set();
 
-  for await (const { file: { name }, source } of allJsFromVueFiles()) {
-    traverse(source, {
+  for await (const { name, jsSource } of allJsFromVueFiles()) {
+    traverse(jsSource, {
       ExportDefaultDeclaration(path) {
         const { node } = path;
         const setupNode = node.declaration.properties.find(prop => prop.key.name === 'setup');
@@ -212,3 +223,175 @@ export const findAsyncDataAndIsLoading = async () => {
   console.log('Double declarations of `isLoading`:');
   logSet(duplicateDeclarations);
 }
+
+export const findTeleportsWithTargetInsideApp = async () => {
+  const log = uniqueLogger()
+  for await (const { content } of allVueFiles()) {
+    const program = parseVueFile(content);
+    matchComponentWithProp({
+      program,
+      source: content,
+      matchComponent: 'teleport',
+      matchProp: 'to',
+      matchValue: matchAny,
+      visit(node, attr) {
+        log(attrValue(attr, content));
+      }
+    });
+  }
+}
+
+const zipMap = (arr, mapper) => arr.reduce((map, prop) => {
+  map[prop] = mapper(prop);
+  return map;
+}, {})
+
+export const findRouterLinksWithRemovedAttrs = async () => {
+  const removedProps = ['append', 'event', 'tag', 'exact'];
+  const sets = zipMap(removedProps, () => new Set());
+
+  for await (const { content, loc, name } of allVueFiles()) {
+    const program = parseVueFile(content);
+    try {
+      matchComponentWithProp({
+        program,
+        source: content,
+        matchComponent: 'routerlink',
+        matchProp: (name) => removedProps.includes(name),
+        matchValue: matchAny,
+        visit(node, attr) {
+          sets[attrKey(attr)].add(loc(attr.loc))
+        }
+      });
+    } catch (err) {
+      console.log(`Error in file: ${name}`);
+      throw err;
+    }
+
+  }
+
+  Object.entries(sets).forEach(([key, set]) => {
+    console.log(`Prop: ${key}`);
+    logSet(set);
+  });
+}
+
+export const findTemplatesWithVFor = async () => {
+  for await (const { content, loc, name } of allVueFiles()) {
+    const program = parseVueFile(content);
+    try {
+      matchComponentWithProp({
+        program,
+        source: content,
+        matchComponent: 'template',
+        matchProp: (name, attr) => {
+          return attr.key.type === 'VDirectiveKey' && name === 'for';
+        },
+        matchValue: matchAny,
+        visit(node, attr) {
+          console.log(loc(attr.loc));
+        }
+      });
+    } catch (err) {
+      console.log(`Error in file: ${name}`);
+      throw err;
+    }
+  }
+}
+
+
+export const findComponentsWithNativeModifier = async () => {
+  const logUniq = uniqueLogger();
+  for await (const { content, name } of allVueFiles()) {
+    const program = parseVueFile(content);
+    try {
+      matchComponentWithProp({
+        program,
+        source: content,
+        matchComponent: matchAny,
+        matchProp: (name, attr) => {
+          return attr.key.type === 'VDirectiveKey' && attr.key.modifiers && attr.key.modifiers.some(mod => mod.name && mod.name === 'native');
+        },
+        matchValue: matchAny,
+        visit(node) {
+          logUniq(normalizeComponentName(node.parent.name));
+        }
+      });
+    } catch (err) {
+      console.log(`Error in file: ${name}`);
+      throw err;
+    }
+  }
+}
+
+export const findAllEventsWithoutEmits = () => {
+  const sources = allVueFiles();
+
+  return iterateFiles(sources, (file) => {
+    const { name } = file;
+    const component = resolveComponentStruct(file);
+    const eventsSet = new Set();
+    [
+      component.template?.content,
+      component.script?.content,
+    ]
+      .filter(Boolean)
+      .forEach(componentPart => {
+      const matches = componentPart.matchAll(/\$emit\((.*)\)/gm);
+      if (matches) {
+        for (const match of matches) {
+          console.log(match[0]);
+          traverse(match[0], {
+            CallExpression(path) {
+              const { node } = path;
+              node.arguments.forEach(arg => {
+                if (arg.type === 'StringLiteral') {
+                  eventsSet.add(arg.value);
+                }
+              });
+            }
+          });
+        }
+      }
+    })
+
+
+    if (!component.script) {
+      if (eventsSet.size) {
+        const serializedEventsList = [...eventsSet].map(e => `'${e}'`).join(', ');
+        console.log(`No script for: ${component.template.file}, events: ${serializedEventsList}`);
+      }
+      return;
+    }
+
+    enterComponentDefinition(component.script.program, (node) => {
+      const emits = getComponentOption(node, 'emits');
+      if (emits) {
+        eventsSet.forEach(event => {
+          if (emits.value.elements.some(eventName => eventName.value === event)) {
+            eventsSet.delete(event);
+          }
+        });
+      }
+
+      if (eventsSet.size) {
+        const serializedEventsList = [...eventsSet].map(e => `'${e}'`).join(', ');
+        console.log(name, serializedEventsList);
+
+        if (emits) {
+          const lastElementPosition = emits.value.elements.at(-1).end + component.script.offset;
+          replaceContent(component.script.file, lastElementPosition, lastElementPosition, serializedEventsList);
+        } else {
+          const insertPosition = [
+            getComponentOption(node, 'name'),
+            getComponentOption(node, 'components'),
+            getComponentOption(node, 'props'),
+          ].filter(Boolean).at(-1).end + component.script.offset + 1;
+          const emitsOption = `\n  emits: [${serializedEventsList}],`;
+          replaceContent(component.script.file, insertPosition, insertPosition, emitsOption);
+        }
+      }
+    })
+  });
+}
+

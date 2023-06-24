@@ -20,6 +20,7 @@
     "esquery": "^1.5.0",
     "glob": "^10.2.2",
     "iter-tools": "^7.5.3",
+    "jsdom": "^22.1.0",
     "vue-eslint-parser": "^9.3.0"
   },
   "engines": {
