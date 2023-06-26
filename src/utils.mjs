@@ -136,3 +136,8 @@ export const withErrorHandling = async (file, fn) => {
     throw err;
   }
 }
+
+export const zipMap = (arr, mapper) => arr.reduce((map, prop) => {
+  map[prop] = mapper(prop);
+  return map;
+}, {})
