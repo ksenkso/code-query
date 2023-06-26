@@ -74,35 +74,6 @@ export const findStyleAndClassBindings = async () => {
   }
 }
 
-export const findComponentsWithClickNative = async () => {
-  const needEvents = new Set();
-
-  for await (const { content } of files('src/components/**/*.vue')) {
-    const program = vueParser.parse(content, {
-      sourceType: 'module',
-      ecmaVersion: 'latest',
-    });
-    vueParser.AST.traverseNodes(program.templateBody, {
-      enterNode(node, parent) {
-        if (node.type === 'VStartTag') {
-          node.attributes.forEach(attr => {
-            if (isEventAttr(attr) && isEventName(attr, 'click') && isNativeEvent(attr)) {
-              needEvents.add(parent.name)
-            }
-          });
-        }
-      },
-      leaveNode: noop,
-    })
-  }
-
-  if (!needEvents.size) {
-    console.log('Nothing found');
-  } else {
-    console.log(Array.from(needEvents).join('\n'));
-  }
-}
-
 export const transformAsyncDataToHooks = async () => {
   const noJsSource = new Set();
   const tasks = [];
@@ -299,31 +270,6 @@ export const findTemplatesWithVFor = async () => {
   }
 }
 
-
-export const findComponentsWithNativeModifier = async () => {
-  const logUniq = uniqueLogger();
-  for await (const { content, name } of allVueFiles()) {
-    const program = parseVueFile(content);
-    try {
-      matchComponentWithProp({
-        program,
-        source: content,
-        matchComponent: matchAny,
-        matchProp: (name, attr) => {
-          return attr.key.type === 'VDirectiveKey' && attr.key.modifiers && attr.key.modifiers.some(mod => mod.name && mod.name === 'native');
-        },
-        matchValue: matchAny,
-        visit(node) {
-          logUniq(normalizeComponentName(node.parent.name));
-        }
-      });
-    } catch (err) {
-      console.log(`Error in file: ${name}`);
-      throw err;
-    }
-  }
-}
-
 export const findAllEventsWithoutEmits = () => {
   const sources = allVueFiles();
 
@@ -354,7 +300,6 @@ export const findAllEventsWithoutEmits = () => {
         }
       }
     })
-
 
     if (!component.script) {
       if (eventsSet.size) {
@@ -395,3 +340,21 @@ export const findAllEventsWithoutEmits = () => {
   });
 }
 
+export const findComponentsWithClickNative = () => {
+  const logUniq = uniqueLogger();
+  return iterateFiles(allVueFiles(), (file) => {
+    const program = parseVueFile(file.content);
+    matchComponentWithProp({
+      program,
+      source: file.content,
+      matchComponent: matchAny,
+      matchProp: (name, attr) => {
+        return attr.key.type === 'VDirectiveKey' && attr.key.modifiers && attr.key.modifiers.some(mod => mod.name && mod.name === 'native');
+      },
+      matchValue: matchAny,
+      visit(node) {
+        logUniq(normalizeComponentName(node.parent.name));
+      }
+    });
+  })
+}

@@ -4,6 +4,19 @@ import path from 'path';
 import { getComponentScript } from './selection.mjs';
 
 export function noop() {}
+
+/**
+ * @typedef {{
+ *   loc(*): string,
+ *   name: string,
+ *   content: string
+ * }} FileStruct
+ */
+
+/**
+ * @param list
+ * @return {AsyncGenerator<FileStruct, string, *>}
+ */
 export const readFilesList = async function * (list) {
   for await (const file of list) {
     const content = await fs.readFile(file, 'utf8');
@@ -48,7 +61,7 @@ export const allVueFiles = async function * () {
 
 export const allJsFromVueFiles = async function * () {
   for await (const file of allVueFiles()) {
-    const jsSource = getComponentScript(file);
+    const jsSource = getComponentScript(file.content, file.name);
 
     if (jsSource) {
       file.jsSource = jsSource;
@@ -57,6 +70,11 @@ export const allJsFromVueFiles = async function * () {
   }
 }
 
+/**
+ * @param files
+ * @param {((file: FileStruct) => Promise<void>)} visitor
+ * @return {Promise<void>}
+ */
 export const iterateFiles = async (files, visitor) => {
   for await (const file of files) {
     await withErrorHandling(file, async () => {
