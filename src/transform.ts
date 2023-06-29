@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 
-export const toCamelCase = str => {
+export const toCamelCase = (str: string) => {
   let name = '';
   let index = 0, length = str.length;
   for (; index < length; index++) {
@@ -14,7 +14,7 @@ export const toCamelCase = str => {
   return name;
 }
 
-export const replaceContent = async (fileName, start, end, replacement) => {
+export const replaceContent = async (fileName: string, start: number, end: number, replacement: string) => {
   const content = await fs.readFile(fileName, 'utf8');
   const newContent = content.substring(0, start) + replacement + content.substring(end);
 

@@ -1,8 +1,9 @@
 # Запросы к коду для проектов на Vue
 
-Запросы сложены в `src/tasks.mjs`, запуск осуществляется так:
+Запросы сложены в `src/tasks.ts`, запуск осуществляется так:
 ```bash
-node src/index.mjs --project-root=/path/to/your/project/root
+PROJECT_ROOT=/path/to/your/project/root yarn start
 # или
-PROJECT_ROOT=/path/to/your/project/root node src/index.mjs
+echo "PROJECT_ROOT=/path/to/your/project/root" > .env.local
+yarn start
 ```

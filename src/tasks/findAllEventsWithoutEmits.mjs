@@ -11,7 +11,7 @@ export const findAllEventsWithoutEmits = () => {
   const sources = allVueFiles();
 
   return iterateFiles(sources, (file) => {
-    const { name } = file;
+    const { path } = file;
     const component = resolveComponentStruct(file);
     const eventsSet = new Set();
     [
@@ -58,7 +58,7 @@ export const findAllEventsWithoutEmits = () => {
 
       if (eventsSet.size) {
         const serializedEventsList = [...eventsSet].map(e => `'${e}'`).join(', ');
-        console.log(name, serializedEventsList);
+        console.log(path, serializedEventsList);
 
         if (emits) {
           const lastElementPosition = emits.value.elements.at(-1).end + component.script.offset;
